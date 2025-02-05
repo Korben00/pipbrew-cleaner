@@ -21,13 +21,7 @@ Only for macOS.
 
 ## Installation
 
-Once published on PyPI, install with:
-
-```bash
-pip install pipbrew-cleaner
-```
-
-Or clone this repository and run:
+Clone this repository and run:
 
 ```bash
 python3 main.py
