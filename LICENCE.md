@@ -1,4 +1,4 @@
-MIT License
+MIT License pipbrew-cleaner
 
 Copyright (c) [2025] [Manuel DORNE - Korben]
 

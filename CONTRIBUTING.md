@@ -1,6 +1,6 @@
-# Contributing to pipcleaner
+# Contributing to pipbrew-cleaner
 
-Thank you for your interest in contributing to pipcleaner! We welcome contributions from the community.
+Thank you for your interest in contributing to pipbrew-cleaner! We welcome contributions from the community.
 
 ## How to Contribute
 
@@ -10,7 +10,7 @@ Thank you for your interest in contributing to pipcleaner! We welcome contributi
 2. **Clone Your Fork:**  
    Open a terminal and run:
    ```bash
-   git clone https://github.com/yourusername/pipcleaner.git
+   git clone https://github.com/yourusername/pipbrew-cleaner.git
 
 Replace yourusername with your GitHub username.
 
@@ -65,3 +65,7 @@ dist/
 
 # Log files
 package_manager.log
+
+
+---
+

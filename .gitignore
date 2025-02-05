@@ -1,3 +1,6 @@
 __pycache__
 Cahier des charges.txt
 package_manager.log
+build-env
+dist
+pipbrew_clearner.egg-info
