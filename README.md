@@ -1,5 +1,5 @@
 # Pipbrew-cleaner
-Ce projet est conçu spécifiquement pour macOS.
+Only for macOS.
 
 # Pip & Brew cleaner
 
