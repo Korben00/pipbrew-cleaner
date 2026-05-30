@@ -1,6 +1,31 @@
-__pycache__
-Cahier des charges.txt
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+build-env/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# Logs
 package_manager.log
-build-env
-dist
-pipbrew_clearner.egg-info
+
+# macOS / editor noise
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+
+# Project spec (kept locally, not published)
+Cahier des charges.txt
+
+# Stray local data dirs (e.g. vector DB caches)
+lancedb/
