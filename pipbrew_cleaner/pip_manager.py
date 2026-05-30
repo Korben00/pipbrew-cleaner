@@ -58,6 +58,41 @@ def get_installed_packages():
         return []
 
 
+def _parse_show_block(text):
+    """Parse a single ``pip show --verbose`` record into an info dict."""
+    info = {"name": None, "version": None, "summary": None, "home_page": None}
+    project_urls = {}
+    in_urls = False
+    for line in text.splitlines():
+        if in_urls:
+            # Indented "Label, URL" entries that follow "Project-URLs:".
+            if line[:1] in (" ", "\t") and "," in line:
+                label, _, url = line.strip().partition(",")
+                project_urls[label.strip().lower()] = url.strip()
+                continue
+            in_urls = False
+        if line.startswith("Name:"):
+            info["name"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Version:"):
+            info["version"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Summary:"):
+            info["summary"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Home-page:"):
+            info["home_page"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Project-URLs:"):
+            in_urls = True
+            rest = line.split(":", 1)[1].strip()
+            if rest and "," in rest:
+                label, _, url = rest.partition(",")
+                project_urls[label.strip().lower()] = url.strip()
+    if not info["home_page"]:
+        for key in ("homepage", "home-page", "documentation", "source", "repository"):
+            if project_urls.get(key):
+                info["home_page"] = project_urls[key]
+                break
+    return info
+
+
 def get_package_info(package):
     """Return details for a pip package, or None on error.
 
@@ -73,40 +108,37 @@ def get_package_info(package):
         if result.returncode != 0 or not result.stdout:
             logging.error("'pip show' failed for %s: %s", package, result.stderr.strip())
             return None
-        info = {"name": None, "version": None, "summary": None, "home_page": None}
-        project_urls = {}
-        in_urls = False
-        for line in result.stdout.splitlines():
-            if in_urls:
-                # Indented "Label, URL" entries that follow "Project-URLs:".
-                if line[:1] in (" ", "\t") and "," in line:
-                    label, _, url = line.strip().partition(",")
-                    project_urls[label.strip().lower()] = url.strip()
-                    continue
-                in_urls = False
-            if line.startswith("Name:"):
-                info["name"] = line.split(":", 1)[1].strip()
-            elif line.startswith("Version:"):
-                info["version"] = line.split(":", 1)[1].strip()
-            elif line.startswith("Summary:"):
-                info["summary"] = line.split(":", 1)[1].strip()
-            elif line.startswith("Home-page:"):
-                info["home_page"] = line.split(":", 1)[1].strip()
-            elif line.startswith("Project-URLs:"):
-                in_urls = True
-                rest = line.split(":", 1)[1].strip()
-                if rest and "," in rest:
-                    label, _, url = rest.partition(",")
-                    project_urls[label.strip().lower()] = url.strip()
-        if not info["home_page"]:
-            for key in ("homepage", "home-page", "documentation", "source", "repository"):
-                if project_urls.get(key):
-                    info["home_page"] = project_urls[key]
-                    break
-        return info
+        return _parse_show_block(result.stdout)
     except Exception as exc:  # noqa: BLE001
         logging.error("Exception in get_package_info(%s): %s", package, exc)
         return None
+
+
+def get_packages_info(packages):
+    """Return ``{canonical_name: info_dict}`` for many packages in one call.
+
+    ``pip show --verbose <p1> <p2> ...`` prints one record per package,
+    separated by a ``---`` line, so all descriptions are fetched with a single
+    subprocess instead of one per package.
+    """
+    out = {}
+    if not packages:
+        return out
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", "--verbose", *packages],
+            capture_output=True, text=True, check=False)
+        if not result.stdout:
+            logging.error("'pip show' (batch) returned no output: %s", result.stderr.strip())
+            return out
+        for block in re.split(r"(?m)^---$", result.stdout):
+            info = _parse_show_block(block)
+            if info.get("name"):
+                out[canonical_name(info["name"])] = info
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logging.error("Exception in get_packages_info: %s", exc)
+        return out
 
 
 def uninstall_package(package):

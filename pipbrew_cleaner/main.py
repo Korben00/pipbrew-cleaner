@@ -7,7 +7,6 @@ Displays package information with colorized output, all in English, using
 only the Python standard library (no third-party dependencies).
 """
 
-import concurrent.futures
 import logging
 import os
 
@@ -24,11 +23,7 @@ BLUE      = "\033[94m"
 MAGENTA   = "\033[95m"
 CYAN      = "\033[96m"
 
-# Each fetch task spawns a `pip show` / `brew info` subprocess. Brew in
-# particular is a heavy Ruby process; firing one per package at full
-# concurrency exhausts process/fork resources and makes brew fail silently
-# (empty-stderr aborts), so concurrency is deliberately bounded.
-MAX_WORKERS = 4
+NO_DESCRIPTION = "No description available"
 
 
 def color_text(text, color, bold=False, underline=False):
@@ -39,35 +34,6 @@ def color_text(text, color, bold=False, underline=False):
     if underline:
         style += UNDERLINE
     return f"{style}{color}{text}{RESET}"
-
-
-def _pip_description(pkg):
-    """Return a short description for a pip package (with a safe fallback)."""
-    info = pip_manager.get_package_info(pkg)
-    return info["summary"] if info and info.get("summary") else "No description available"
-
-
-def _brew_description(pkg, is_cask):
-    """Return a short description for a Homebrew package (with a safe fallback)."""
-    info = brew_manager.get_package_info(pkg, is_cask)
-    return info["desc"] if info and info.get("desc") else "No description available"
-
-
-def _fetch_descriptions(indexed, fetch):
-    """Fetch descriptions concurrently (bounded) for ``[(index, pkg), ...]``.
-
-    Returns a ``{index: description}`` dict. Completion order is irrelevant —
-    callers display by index — so a scrambled, non-deterministic order can
-    never reach the screen.
-    """
-    out = {}
-    if not indexed:
-        return out
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_index = {executor.submit(fetch, pkg): idx for idx, pkg in indexed}
-        for future in concurrent.futures.as_completed(future_to_index):
-            out[future_to_index[future]] = future.result()
-    return out
 
 
 def main_menu():
@@ -114,31 +80,45 @@ def list_and_uninstall():
         cask_indexed.append((idx, pkg))
         idx += 1
 
-    # pip packages
+    # pip packages — one `pip show` call for the whole section.
     print("\n" + color_text("=== pip Packages ===", MAGENTA, bold=True))
-    pip_desc = _fetch_descriptions(pip_indexed, _pip_description)
-    for i, pkg in pip_indexed:
-        summary = pip_desc.get(i, "No description available")
-        number = color_text(f"{i}.", BLUE)
-        name = color_text(pkg, YELLOW)
-        if pip_manager.is_critical(pkg):
-            print(f"{number} {name} (pip) {color_text('[protected]', RED)} - {summary}")
-        else:
-            print(f"{number} {name} (pip) - {summary}")
+    if pip_indexed:
+        print(color_text(f"Fetching info for {len(pip_indexed)} pip package(s)...", BLUE))
+        pip_info = pip_manager.get_packages_info([pkg for _, pkg in pip_indexed])
+        for i, pkg in pip_indexed:
+            info = pip_info.get(pip_manager.canonical_name(pkg))
+            summary = info["summary"] if info and info.get("summary") else NO_DESCRIPTION
+            number = color_text(f"{i}.", BLUE)
+            name = color_text(pkg, YELLOW)
+            if pip_manager.is_critical(pkg):
+                print(f"{number} {name} (pip) {color_text('[protected]', RED)} - {summary}")
+            else:
+                print(f"{number} {name} (pip) - {summary}")
 
-    # Homebrew formulas
+    # Homebrew formulas — one `brew info` call for the whole section.
     print("\n" + color_text("=== Homebrew Formulas ===", MAGENTA, bold=True))
-    formula_desc = _fetch_descriptions(formula_indexed, lambda p: _brew_description(p, False))
-    for i, pkg in formula_indexed:
-        desc = formula_desc.get(i, "No description available")
-        print(f"{color_text(f'{i}.', BLUE)} {color_text(pkg, YELLOW)} (brew - formula) - {desc}")
+    if formula_indexed:
+        print(color_text(
+            f"Fetching info for {len(formula_indexed)} formula(s) "
+            f"(one brew call, may take a few seconds for large installs)...", BLUE))
+        formula_info = brew_manager.get_packages_info(
+            [pkg for _, pkg in formula_indexed], is_cask=False)
+        for i, pkg in formula_indexed:
+            info = formula_info.get(pkg)
+            desc = info["desc"] if info and info.get("desc") else NO_DESCRIPTION
+            print(f"{color_text(f'{i}.', BLUE)} {color_text(pkg, YELLOW)} (brew - formula) - {desc}")
 
-    # Homebrew casks
+    # Homebrew casks — one `brew info --cask` call for the whole section.
     print("\n" + color_text("=== Homebrew Casks ===", MAGENTA, bold=True))
-    cask_desc = _fetch_descriptions(cask_indexed, lambda p: _brew_description(p, True))
-    for i, pkg in cask_indexed:
-        desc = cask_desc.get(i, "No description available")
-        print(f"{color_text(f'{i}.', BLUE)} {color_text(pkg, YELLOW)} (brew - cask) - {desc}")
+    if cask_indexed:
+        print(color_text(
+            f"Fetching info for {len(cask_indexed)} cask(s) (one brew call)...", BLUE))
+        cask_info = brew_manager.get_packages_info(
+            [pkg for _, pkg in cask_indexed], is_cask=True)
+        for i, pkg in cask_indexed:
+            info = cask_info.get(pkg)
+            desc = info["desc"] if info and info.get("desc") else NO_DESCRIPTION
+            print(f"{color_text(f'{i}.', BLUE)} {color_text(pkg, YELLOW)} (brew - cask) - {desc}")
 
     # Ask user to select packages to uninstall
     choice = input(

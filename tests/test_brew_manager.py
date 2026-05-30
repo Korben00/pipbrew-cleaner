@@ -87,6 +87,42 @@ def test_get_package_info_none_on_failure(monkeypatch):
     assert brew_manager.get_package_info("ghost") is None
 
 
+def test_get_packages_info_batch_maps_names_and_aliases(monkeypatch):
+    payload = json.dumps({
+        "formulae": [
+            {"name": "git", "full_name": "git", "desc": "VCS",
+             "homepage": "h1", "versions": {"stable": "2.54"}},
+            {"name": "openssl@3", "full_name": "openssl@3", "aliases": ["openssl"],
+             "desc": "TLS toolkit", "homepage": "h2", "versions": {"stable": "3.3"}},
+        ],
+        "casks": [],
+    })
+    fake = FakeBrew([(lambda c: True, {"stdout": payload})])
+    _install(monkeypatch, fake)
+    info = brew_manager.get_packages_info(["git", "openssl@3"], is_cask=False)
+    assert info["git"]["desc"] == "VCS"
+    assert info["openssl@3"]["version"] == "3.3"
+    # Aliases are reachable too, so lookups by whatever `brew list` returned hit.
+    assert info["openssl"]["desc"] == "TLS toolkit"
+    # A single brew invocation for the whole batch.
+    assert sum(1 for c in fake.calls if "info" in c) == 1
+
+
+def test_get_packages_info_batch_casks(monkeypatch):
+    payload = json.dumps({
+        "formulae": [],
+        "casks": [
+            {"token": "iterm2", "desc": "Terminal", "homepage": "h", "version": "3.5"},
+            {"token": "alacritty", "desc": "GPU terminal", "homepage": "h2", "version": "0.13"},
+        ],
+    })
+    fake = FakeBrew([(lambda c: True, {"stdout": payload})])
+    _install(monkeypatch, fake)
+    info = brew_manager.get_packages_info(["iterm2", "alacritty"], is_cask=True)
+    assert info["iterm2"]["version"] == "3.5"
+    assert info["alacritty"]["desc"] == "GPU terminal"
+
+
 # --- uninstall_package (safety) ---------------------------------------------
 
 def test_uninstall_formula_no_dependents_succeeds(monkeypatch):

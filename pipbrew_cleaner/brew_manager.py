@@ -82,6 +82,65 @@ def get_package_info(name, is_cask=False):
         return None
 
 
+def get_packages_info(names, is_cask=False):
+    """Return ``{name: info_dict}`` for many packages in a SINGLE brew call.
+
+    ``brew info`` is dominated by process startup cost, so querying one package
+    at a time is unworkable for users with hundreds of formulas. A single
+    ``brew info --json=v2 <name1> <name2> ...`` invocation fetches them all at
+    once. Returns an empty dict on failure; callers fall back per-package.
+    """
+    out = {}
+    if not names:
+        return out
+    try:
+        cmd = ["brew", "info", "--json=v2"]
+        if is_cask:
+            cmd.append("--cask")
+        cmd.extend(names)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if not result.stdout:
+            logging.error("'brew info' (batch) returned no output: %s", result.stderr.strip())
+            return out
+        data = json.loads(result.stdout)
+        if is_cask:
+            for cask in data.get("casks", []):
+                token = cask.get("token")
+                if token:
+                    out[token] = {
+                        "name": token,
+                        "desc": cask.get("desc"),
+                        "homepage": cask.get("homepage"),
+                        "version": cask.get("version"),
+                    }
+        else:
+            for formula in data.get("formulae", []):
+                versions = formula.get("versions") or {}
+                info = {
+                    "name": formula.get("name"),
+                    "desc": formula.get("desc"),
+                    "homepage": formula.get("homepage"),
+                    "version": versions.get("stable"),
+                }
+                # Map every identifier brew might know this formula by, so the
+                # caller can look it up by whatever `brew list` returned.
+                for key in (formula.get("name"), formula.get("full_name")):
+                    if key:
+                        out[key] = info
+                for alias in formula.get("aliases") or []:
+                    out[alias] = info
+        return out
+    except json.JSONDecodeError as exc:
+        logging.error("Could not parse batch 'brew info' output: %s", exc)
+        return out
+    except FileNotFoundError:
+        logging.error("Homebrew ('brew') is not installed or not on PATH.")
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logging.error("Exception in get_packages_info: %s", exc)
+        return out
+
+
 def uninstall_package(name, is_cask=False):
     """Uninstall a Homebrew formula or cask. Return True on success.
 

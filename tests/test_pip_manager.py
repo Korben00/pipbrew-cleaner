@@ -91,6 +91,20 @@ def test_get_package_info_none_on_failure(monkeypatch):
     assert pip_manager.get_package_info("ghost") is None
 
 
+def test_get_packages_info_batch_splits_records(monkeypatch):
+    out = (
+        "Name: requests\nVersion: 2.31.0\nSummary: HTTP for humans\nHome-page: https://r.ex\n"
+        "---\n"
+        "Name: Rich\nVersion: 13.0\nSummary: Rich text\nHome-page: https://rich.ex\n"
+    )
+    monkeypatch.setattr(pip_manager.subprocess, "run",
+                        lambda *a, **k: _completed(a, stdout=out))
+    info = pip_manager.get_packages_info(["requests", "rich"])
+    assert info["requests"]["summary"] == "HTTP for humans"
+    # Keyed canonically, so "Rich" is reachable as "rich".
+    assert info["rich"]["summary"] == "Rich text"
+
+
 # --- uninstall_package -------------------------------------------------------
 
 def test_uninstall_refuses_critical_without_running_pip(monkeypatch):
